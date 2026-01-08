@@ -184,6 +184,9 @@ struct winlink;
 /* Multiple click timeout. */
 #define KEYC_CLICK_TIMEOUT 300
 
+/* Multiple click position tolerance (in pixels). */
+#define KEYC_CLICK_POSITION_TOLERANCE 0
+
 /* Mouse key codes. */
 #define KEYC_MOUSE_KEY(name)		    \
 	KEYC_ ## name ## _PANE,		    \
@@ -1977,6 +1980,8 @@ struct client {
 	struct event		 repeat_timer;
 
 	struct event		 click_timer;
+	u_int			 click_x;
+	u_int			 click_y;
 	u_int			 click_button;
 	struct mouse_event	 click_event;
 

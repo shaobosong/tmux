@@ -664,6 +664,16 @@ server_client_check_mouse_in_pane(struct window_pane *wp, u_int px, u_int py,
 	return (NOWHERE);
 }
 
+static int
+server_client_is_same_position(struct client *c, struct mouse_event *m)
+{
+	int dx = abs((int)m->x - (int)c->click_x);
+	int dy = abs((int)m->y - (int)c->click_y);
+
+	return (dx <= KEYC_CLICK_POSITION_TOLERANCE &&
+	        dy <= KEYC_CLICK_POSITION_TOLERANCE);
+}
+
 /* Check for mouse keys. */
 static key_code
 server_client_check_mouse(struct client *c, struct key_event *event)
@@ -733,20 +743,32 @@ server_client_check_mouse(struct client *c, struct key_event *event)
 		if (c->flags & CLIENT_DOUBLECLICK) {
 			evtimer_del(&c->click_timer);
 			c->flags &= ~CLIENT_DOUBLECLICK;
-			if (m->b == c->click_button) {
+			if (m->b == c->click_button &&
+			    server_client_is_same_position(c, m)) {
 				type = SECOND;
 				x = m->x, y = m->y, b = m->b;
 				log_debug("second-click at %u,%u", x, y);
 				c->flags |= CLIENT_TRIPLECLICK;
+			} else {
+				type = DOWN;
+				x = m->x, y = m->y, b = m->b;
+				log_debug("re-down at %u,%u", x, y);
+				c->flags |= CLIENT_DOUBLECLICK;
 			}
 		} else if (c->flags & CLIENT_TRIPLECLICK) {
 			evtimer_del(&c->click_timer);
 			c->flags &= ~CLIENT_TRIPLECLICK;
-			if (m->b == c->click_button) {
+			if (m->b == c->click_button &&
+			    server_client_is_same_position(c, m)) {
 				type = TRIPLE;
 				x = m->x, y = m->y, b = m->b;
 				log_debug("triple-click at %u,%u", x, y);
 				goto have_event;
+			} else {
+				type = DOWN;
+				x = m->x, y = m->y, b = m->b;
+				log_debug("re-down at %u,%u", x, y);
+				c->flags |= CLIENT_DOUBLECLICK;
 			}
 		}
 
@@ -761,6 +783,8 @@ server_client_check_mouse(struct client *c, struct key_event *event)
 		if (KEYC_CLICK_TIMEOUT != 0) {
 			memcpy(&c->click_event, m, sizeof c->click_event);
 			c->click_button = m->b;
+			c->click_x = m->x;
+			c->click_y = m->y;
 
 			log_debug("click timer started");
 			tv.tv_sec = KEYC_CLICK_TIMEOUT / 1000;
