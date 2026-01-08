@@ -3089,7 +3089,9 @@ void	 grid_reader_cursor_up(struct grid_reader *);
 void	 grid_reader_cursor_start_of_line(struct grid_reader *, int);
 void	 grid_reader_cursor_end_of_line(struct grid_reader *, int, int);
 void	 grid_reader_cursor_next_word(struct grid_reader *, const char *);
+void	 grid_reader_cursor_next_blank_end(struct grid_reader *gr);
 void	 grid_reader_cursor_next_word_end(struct grid_reader *, const char *);
+void	 grid_reader_cursor_previous_blank(struct grid_reader *gr, int already, int stop_at_eol);
 void	 grid_reader_cursor_previous_word(struct grid_reader *, const char *,
 	     int, int);
 int	 grid_reader_cursor_jump(struct grid_reader *,

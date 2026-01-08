@@ -183,6 +183,87 @@ grid_reader_in_set(struct grid_reader *gr, const char *set)
 	return (grid_in_set(gr->gd, gr->cx, gr->cy, set));
 }
 
+/* Move cursor to the end of the next blank. */
+	void
+grid_reader_cursor_next_blank_end(struct grid_reader *gr)
+{
+	u_int	xx, yy;
+
+	/* Do not break up wrapped words. */
+	if (grid_get_line(gr->gd, gr->cy)->flags & GRID_LINE_WRAPPED)
+		xx = gr->gd->sx - 1;
+	else
+		xx = grid_reader_line_length(gr);
+	yy = gr->gd->hsize + gr->gd->sy - 1;
+	log_debug("[ssb]: %s: hsize: %u, sx: %u, sy: %u, xx :%u, yy: %u",
+			__func__, gr->gd->hsize, gr->gd->sx, gr->gd->sy, xx, yy);
+
+	/*
+	 * If we started on a non-whitespace, move until reaching the first
+	 * whitespace character, and continue moving until the first
+	 * non-whitespace.
+	 */
+
+	while (gr->cx < gr->gd->sx - 1) {
+		if (!grid_reader_in_set(gr, WHITESPACE)) {
+			gr->cx++;
+		} else {
+			do {
+				gr->cx++;
+				log_debug("[ssb]: %s: gr_cx: %u, gr_cy: %u",
+						__func__, gr->cx, gr->cy);
+			} while (gr->cx < gr->gd->sx - 1 &&
+					grid_reader_in_set(gr, WHITESPACE));
+			break;
+		}
+	}
+
+	if (!grid_reader_in_set(gr, WHITESPACE)) {
+		grid_reader_cursor_left(gr, 1);
+	}
+}
+
+// /* Move cursor to the end of the next blank. */
+// void
+// grid_reader_cursor_next_blank_end(struct grid_reader *gr)
+// {
+// 	u_int	xx, yy;
+
+// 	/* Do not break up wrapped words. */
+// 	if (grid_get_line(gr->gd, gr->cy)->flags & GRID_LINE_WRAPPED)
+// 		xx = gr->gd->sx - 1;
+// 	else
+// 		xx = grid_reader_line_length(gr);
+// 	yy = gr->gd->hsize + gr->gd->sy - 1;
+
+// 	/*
+// 	 * When navigating via spaces (for example with next-space), separators
+// 	 * should be empty in both modes.
+// 	 *
+// 	 * If we started on a whitespace, move until reaching the first
+// 	 * non-whitespace character. If that character is a separator, treat
+// 	 * subsequent separators as a word, and continue moving until the first
+// 	 * non-separator. Otherwise, continue moving until the first separator
+// 	 * or whitespace.
+// 	 */
+
+// 	while (grid_reader_handle_wrap(gr, &xx, &yy)) {
+// 		if (!grid_reader_in_set(gr, WHITESPACE)) {
+// 			gr->cx++;
+// 		} else {
+// 			do
+// 				gr->cx++;
+// 			while (grid_reader_handle_wrap(gr, &xx, &yy) &&
+// 			    grid_reader_in_set(gr, WHITESPACE));
+//             break;
+// 		}
+// 	}
+
+//     if (!grid_reader_in_set(gr, WHITESPACE)) {
+//         grid_reader_cursor_left(gr, 1);
+//     }
+// }
+
 /* Move cursor to the start of the next word. */
 void
 grid_reader_cursor_next_word(struct grid_reader *gr, const char *separators)
@@ -272,6 +353,158 @@ grid_reader_cursor_next_word_end(struct grid_reader *gr, const char *separators)
 		}
 	}
 }
+
+/* Move cursor to *only* the blank (whitespace) on the current line.
+ * If not on a blank, move to the previous blank but do not cross lines.
+ */
+	void
+grid_reader_cursor_previous_blank(struct grid_reader *gr, int already,
+		int stop_at_eol)
+{
+	int	oldx, oldy;
+	(void) stop_at_eol;
+
+	/*
+	 * If already on whitespace, we want to select ONLY the blank on
+	 * the current line, not extend upwards.
+	 */
+	if (already || grid_reader_in_set(gr, WHITESPACE)) {
+		/* Move to the start of the blank on the current line only */
+		for (;;) {
+			if (gr->cx > 0) {
+				gr->cx--;
+				if (!grid_reader_in_set(gr, WHITESPACE)) {
+					gr->cx++;  /* Move back to first whitespace */
+					break;
+				}
+			} else {
+				/* At start of line, stop - do not go to previous line */
+				break;
+			}
+		}
+	} else {
+		/*
+		 * Not on whitespace, look for previous blank.
+		 * But only search within the current line, do not cross lines.
+		 */
+		for (;;) {
+			if (gr->cx > 0) {
+				gr->cx--;
+				if (grid_reader_in_set(gr, WHITESPACE))
+					break;
+			} else {
+				/* At start of line without finding whitespace, stop */
+				return;
+			}
+		}
+
+		/*
+		 * Now on whitespace, move back to the start of this
+		 * whitespace block (still within current line).
+		 */
+		do {
+			oldx = gr->cx;
+			oldy = gr->cy;
+			if (gr->cx > 0)
+				gr->cx--;
+		} while (grid_reader_in_set(gr, WHITESPACE));
+		gr->cx = oldx;
+		gr->cy = oldy;
+	}
+}
+
+// /* Move cursor to the start of the previous blank (whitespace block). */
+// void
+// grid_reader_cursor_previous_blank(struct grid_reader *gr, int already, int stop_at_eol)
+// {
+// 	int	oldx, oldy, at_eol;
+
+// 	/*
+// 	 * If already on whitespace, move back to the start of this
+// 	 * whitespace block.
+// 	 */
+// 	if (already || grid_reader_in_set(gr, WHITESPACE)) {
+// 		for (;;) {
+// 			if (gr->cx > 0) {
+// 				gr->cx--;
+// 				if (!grid_reader_in_set(gr, WHITESPACE)) {
+// 					gr->cx++;  /* Move back to first whitespace */
+// 					break;
+// 				}
+// 			} else {
+// 				/* At start of line, try to go to previous line */
+// 				if (gr->cy == 0)
+// 					break;
+
+// 				grid_reader_cursor_up(gr);
+// 				grid_reader_cursor_end_of_line(gr, 0, 0);
+
+// 				/* Stop if at EOL. */
+// 				if (stop_at_eol && gr->cx > 0) {
+// 					oldx = gr->cx;
+// 					gr->cx--;
+// 					at_eol = grid_reader_in_set(gr, WHITESPACE);
+// 					gr->cx = oldx;
+// 					if (at_eol)
+// 						break;
+// 				}
+// 			}
+// 		}
+// 	} else {
+// 		/*
+// 		 * Not on whitespace, move back to find previous
+// 		 * whitespace block.
+// 		 */
+// 		for (;;) {
+// 			if (gr->cx > 0) {
+// 				gr->cx--;
+// 				if (grid_reader_in_set(gr, WHITESPACE))
+// 					break;
+// 			} else {
+// 				if (gr->cy == 0)
+// 					return;
+// 				grid_reader_cursor_up(gr);
+// 				grid_reader_cursor_end_of_line(gr, 0, 0);
+
+// 				/* Stop if at EOL. */
+// 				if (stop_at_eol && gr->cx > 0) {
+// 					oldx = gr->cx;
+// 					gr->cx--;
+// 					at_eol = grid_reader_in_set(gr, WHITESPACE);
+// 					gr->cx = oldx;
+
+// 					if (at_eol)
+// 						return;
+// 				}
+// 			}
+// 		}
+
+// 		/*
+// 		 * Now on whitespace, move back to the start of this
+// 		 * whitespace block.
+// 		 */
+
+// 		do {
+// 			oldx = gr->cx;
+// 			oldy = gr->cy;
+// 			if (gr->cx == 0) {
+
+// 				if (gr->cy == 0 ||
+// 				    (~grid_get_line(gr->gd, gr->cy - 1)->flags &
+// 				    GRID_LINE_WRAPPED))
+// 					break;
+// 				grid_reader_cursor_up(gr);
+// 				grid_reader_cursor_end_of_line(gr, 0, 1);
+// 			}
+// 			if (gr->cx > 0)
+// 				gr->cx--;
+// 		} while (grid_reader_in_set(gr, WHITESPACE));
+
+// 		gr->cx = oldx;
+// 		gr->cy = oldy;
+
+// 	}
+// }
 
 /* Move to the previous place where a word begins. */
 void
