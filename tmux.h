@@ -1983,6 +1983,7 @@ struct client {
 	u_int			 click_x;
 	u_int			 click_y;
 	u_int			 click_button;
+	struct window_pane	*drag_start_wp;
 	struct mouse_event	 click_event;
 
 	struct status_line	 status;

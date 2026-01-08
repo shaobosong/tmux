@@ -5843,6 +5843,9 @@ window_copy_start_drag(struct client *c, struct mouse_event *m)
 	yg = screen_hsize(data->backing) + y - data->oy;
 	if (x < data->selrx || x > data->endselrx || yg != data->selry)
 		data->selflag = SEL_CHAR;
+
+	c->drag_start_wp = wp;
+
 	switch (data->selflag) {
 	case SEL_WORD:
 		if (data->separators != NULL) {
@@ -5880,7 +5883,7 @@ window_copy_drag_update(struct client *c, struct mouse_event *m)
 	if (c == NULL)
 		return;
 
-	wp = cmd_mouse_pane(m, NULL, NULL);
+	wp = c->drag_start_wp;
 	if (wp == NULL)
 		return;
 	wme = TAILQ_FIRST(&wp->modes);
@@ -5917,11 +5920,12 @@ window_copy_drag_release(struct client *c, struct mouse_event *m)
 	struct window_pane		*wp;
 	struct window_mode_entry	*wme;
 	struct window_copy_mode_data	*data;
+	(void)m;
 
 	if (c == NULL)
 		return;
 
-	wp = cmd_mouse_pane(m, NULL, NULL);
+	wp = c->drag_start_wp;
 	if (wp == NULL)
 		return;
 	wme = TAILQ_FIRST(&wp->modes);
