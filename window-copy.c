@@ -2227,6 +2227,7 @@ window_copy_cmd_select_line(struct window_copy_cmd_state *cs)
 	window_copy_cursor_start_of_line(wme);
 	data->selrx = data->cx;
 	data->selry = screen_hsize(data->backing) + data->cy - data->oy;
+	data->endselrx = data->selrx;
 	data->endselry = data->selry;
 	window_copy_start_selection(wme);
 	window_copy_cursor_end_of_line(wme);
@@ -2236,6 +2237,9 @@ window_copy_cmd_select_line(struct window_copy_cmd_state *cs)
 		window_copy_cursor_down(wme, 0);
 		window_copy_cursor_end_of_line(wme);
 	}
+
+	data->dx = data->selrx;
+	data->dy = data->selry;
 
 	return (WINDOW_COPY_CMD_REDRAW);
 }
@@ -5004,6 +5008,8 @@ window_copy_set_selection(struct window_mode_entry *wme, int may_redraw,
 		}
 	} else if (data->selflag == SEL_WORD && may_redraw) {
 		window_copy_redraw_selection_diff(wme, old_sely, old_endsely);
+	} else if (data->selflag == SEL_LINE && may_redraw) {
+		window_copy_redraw_selection_diff(wme, old_sely, old_endsely);
 	} else if (data->selflag == SEL_CHAR && may_redraw) {
 		window_copy_redraw_selection_diff(wme, old_sely, old_endsely);
 	}
@@ -5509,8 +5515,8 @@ window_copy_cursor_up(struct window_mode_entry *wme, int scroll_only)
 		data->lastsx = ox;
 	}
 
-	if (data->lineflag == LINE_SEL_LEFT_RIGHT && oy == data->sely)
-		window_copy_other_end(wme);
+	// if (data->lineflag == LINE_SEL_LEFT_RIGHT && oy == data->sely)
+	// 	window_copy_other_end(wme);
 
 	/* screen up */
 	if (scroll_only || data->cy == 0) {
@@ -5540,23 +5546,23 @@ window_copy_cursor_up(struct window_mode_entry *wme, int scroll_only)
 		}
 	}
 
-	if (data->lineflag == LINE_SEL_LEFT_RIGHT)
-	{
-		py = screen_hsize(data->backing) + data->cy - data->oy;
-		if (data->rectflag)
-			px = screen_size_x(data->backing);
-		else
-			px = window_copy_find_length(wme, py);
-		window_copy_update_cursor(wme, px, data->cy);
-		if (window_copy_update_selection(wme, 1, 0))
-			window_copy_redraw_lines(wme, data->cy, 1);
-	}
-	else if (data->lineflag == LINE_SEL_RIGHT_LEFT)
-	{
-		window_copy_update_cursor(wme, 0, data->cy);
-		if (window_copy_update_selection(wme, 1, 0))
-			window_copy_redraw_lines(wme, data->cy, 1);
-	}
+	// if (data->lineflag == LINE_SEL_LEFT_RIGHT)
+	// {
+	// 	py = screen_hsize(data->backing) + data->cy - data->oy;
+	// 	if (data->rectflag)
+	// 		px = screen_size_x(data->backing);
+	// 	else
+	// 		px = window_copy_find_length(wme, py);
+	// 	window_copy_update_cursor(wme, px, data->cy);
+	// 	if (window_copy_update_selection(wme, 1, 0))
+	// 		window_copy_redraw_lines(wme, data->cy, 1);
+	// }
+	// else if (data->lineflag == LINE_SEL_RIGHT_LEFT)
+	// {
+	// 	window_copy_update_cursor(wme, 0, data->cy);
+	// 	if (window_copy_update_selection(wme, 1, 0))
+	// 		window_copy_redraw_lines(wme, data->cy, 1);
+	// }
 }
 
 static void
@@ -5575,8 +5581,8 @@ window_copy_cursor_down(struct window_mode_entry *wme, int scroll_only)
 		data->lastsx = ox;
 	}
 
-	if (data->lineflag == LINE_SEL_RIGHT_LEFT && oy == data->endsely)
-		window_copy_other_end(wme);
+	// if (data->lineflag == LINE_SEL_RIGHT_LEFT && oy == data->endsely)
+	// 	window_copy_other_end(wme);
 
 	/* screen down */
 	if (scroll_only || data->cy == screen_size_y(s) - 1) {
@@ -5604,27 +5610,27 @@ window_copy_cursor_down(struct window_mode_entry *wme, int scroll_only)
 		}
 	}
 
-	if (data->lineflag == LINE_SEL_LEFT_RIGHT)
-	{
-		py = screen_hsize(data->backing) + data->cy - data->oy;
-		if (data->rectflag)
-			px = screen_size_x(data->backing);
-		else
-			px = window_copy_find_length(wme, py);
-		window_copy_update_cursor(wme, px, data->cy);
-		if (window_copy_update_selection(wme, 1, 0)) {
-			window_copy_redraw_lines(wme, data->cy, 1);
-			log_debug("%s: [ssb,4] after window_copy_redraw_lines", __func__);
-		}
-	}
-	else if (data->lineflag == LINE_SEL_RIGHT_LEFT)
-	{
-		window_copy_update_cursor(wme, 0, data->cy);
-		if (window_copy_update_selection(wme, 1, 0)) {
-			window_copy_redraw_lines(wme, data->cy, 1);
-			log_debug("%s: [ssb,5] after window_copy_redraw_lines", __func__);
-		}
-	}
+	// if (data->lineflag == LINE_SEL_LEFT_RIGHT)
+	// {
+	// 	py = screen_hsize(data->backing) + data->cy - data->oy;
+	// 	if (data->rectflag)
+	// 		px = screen_size_x(data->backing);
+	// 	else
+	// 		px = window_copy_find_length(wme, py);
+	// 	window_copy_update_cursor(wme, px, data->cy);
+	// 	if (window_copy_update_selection(wme, 1, 0)) {
+	// 		window_copy_redraw_lines(wme, data->cy, 1);
+	// 		log_debug("%s: [ssb,4] after window_copy_redraw_lines", __func__);
+	// 	}
+	// }
+	// else if (data->lineflag == LINE_SEL_RIGHT_LEFT)
+	// {
+	// 	window_copy_update_cursor(wme, 0, data->cy);
+	// 	if (window_copy_update_selection(wme, 1, 0)) {
+	// 		window_copy_redraw_lines(wme, data->cy, 1);
+	// 		log_debug("%s: [ssb,5] after window_copy_redraw_lines", __func__);
+	// 	}
+	// }
 }
 
 static void
