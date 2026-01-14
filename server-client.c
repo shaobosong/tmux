@@ -684,6 +684,7 @@ server_client_check_mouse(struct client *c, struct key_event *event)
 	struct winlink		*fwl;
 	struct window_pane	*wp, *fwp;
 	u_int			 x, y, b, sx, sy, px, py, sl_mpos = 0;
+	int			 current_ox, current_oy;
 	int			 ignore = 0;
 	key_code		 key;
 	struct timeval		 tv;
@@ -907,6 +908,106 @@ have_event:
 		}
 	}
 
+	if (type == DRAG && c->tty.mouse_drag_flag && c->tty.mouse_drag_where != 0) {
+		/* Use locked mouse_where during drag */
+		where = c->tty.mouse_drag_where;
+		log_debug("drag: using locked mouse_where %d", where);
+
+		/* Use the original window and pane from drag start */
+		if (where != STATUS &&
+		    where != STATUS_LEFT &&
+		    where != STATUS_RIGHT &&
+		    where != STATUS_DEFAULT) {
+			m->w = c->tty.mouse_drag_w;
+			m->wp = c->tty.mouse_drag_wp;
+		}
+		w = window_find_by_id(m->w);
+		wp = window_pane_find_by_id(m->wp);
+
+		/* Calculate corrected coordinates based on original WHERE */
+		switch (where) {
+		case PANE:
+			/* For pane dragging, transform coordinates to be relative to the original pane */
+			px = x;
+			if (m->statusat == 0 && y >= m->statuslines)
+				py = y - m->statuslines;
+			else if (m->statusat > 0 && y >= (u_int)m->statusat)
+				py = m->statusat - 1;
+			else
+				py = y;
+
+			/* Get current window offsets for coordinate transformation */
+			tty_window_offset(&c->tty, &current_ox, &current_oy, &sx, &sy);
+
+			/* Transform global coordinates to be relative to original pane */
+			px = px - current_ox + c->tty.mouse_drag_ox;
+			py = py - current_oy + c->tty.mouse_drag_oy;
+
+			/* Ensure coordinates are within original pane bounds */
+			if (wp != NULL) {
+				if (px < wp->xoff)
+					px = wp->xoff;
+				if (py < wp->yoff)
+					py = wp->yoff;
+				if (px >= wp->xoff + wp->sx)
+					px = wp->xoff + wp->sx - 1;
+				if (py >= wp->yoff + wp->sy)
+					py = wp->yoff + wp->sy - 1;
+			}
+
+			/* CRITICAL: Set mouse event coordinates directly */
+			/* This ensures cmd_mouse_at gets the correct coordinates */
+			m->x = px - c->tty.mouse_drag_ox;
+			m->y = py - c->tty.mouse_drag_oy;
+			m->ox = c->tty.mouse_drag_ox;
+			m->oy = c->tty.mouse_drag_oy;
+
+			/* CRITICAL: Skip calling server_client_check_mouse_in_pane during drag */
+			/* This prevents the WHERE from changing to BORDER when mouse moves to border */
+			break;
+		case BORDER:
+			/* For border dragging, use original coordinates */
+			px = c->tty.mouse_drag_x;
+			py = c->tty.mouse_drag_y;
+			m->ox = c->tty.mouse_drag_ox;
+			m->oy = c->tty.mouse_drag_oy;
+			break;
+		case STATUS:
+		case STATUS_LEFT:
+		case STATUS_RIGHT:
+		case STATUS_DEFAULT:
+			/* For status line dragging, maintain original coordinates */
+			px = c->tty.mouse_drag_x;
+			py = c->tty.mouse_drag_y;
+			break;
+		case SCROLLBAR_UP:
+		case SCROLLBAR_SLIDER:
+		case SCROLLBAR_DOWN:
+			/* For scrollbar dragging, calculate relative position */
+			px = x;
+			if (m->statusat == 0 && y >= m->statuslines)
+				py = y - m->statuslines;
+			else if (m->statusat > 0 && y >= (u_int)m->statusat)
+				py = m->statusat - 1;
+			else
+				py = y;
+
+			m->ox = c->tty.mouse_drag_ox;
+			m->oy = c->tty.mouse_drag_oy;
+			px = px + m->ox;
+			py = py + m->oy;
+			break;
+		default:
+			/* Fallback to original behavior */
+			px = x;
+			py = y;
+			break;
+		}
+
+		log_debug("drag: corrected coordinates to %u,%u with offsets %d,%d",
+		    px, py, m->ox, m->oy);
+	}
+
 	/* Stop dragging if needed. */
 	if (type != DRAG &&
 	    type != WHEEL &&
@@ -1074,7 +1175,15 @@ have_event:
 			break;
 		}
 		c->tty.mouse_drag_flag = 0;
+		c->tty.mouse_drag_where = NOWHERE;
+		c->tty.mouse_drag_w = 0;
+		c->tty.mouse_drag_wp = 0;
+		c->tty.mouse_drag_x = 0;
+		c->tty.mouse_drag_y = 0;
+		c->tty.mouse_drag_ox = 0;
+		c->tty.mouse_drag_oy = 0;
 		c->tty.mouse_slider_mpos = -1;
+		log_debug("drag end: cleared mouse_drag state");
 		goto out;
 	}
 
@@ -1300,6 +1409,16 @@ have_event:
 		 * where the user grabbed.
 		 */
 		c->tty.mouse_drag_flag = MOUSE_BUTTONS(b) + 1;
+		c->tty.mouse_drag_where = where;
+		c->tty.mouse_drag_w = m->w;
+		c->tty.mouse_drag_wp = m->wp;
+		c->tty.mouse_drag_x = x;
+		c->tty.mouse_drag_y = y;
+		c->tty.mouse_drag_ox = m->ox;
+		c->tty.mouse_drag_oy = m->oy;
+		log_debug("drag start: saving mouse_where %d, window %u, pane %u, coords %u,%u, offsets %d,%d",
+		    where, m->w, m->wp, x, y, m->ox, m->oy);
+
 		if (c->tty.mouse_scrolling_flag == 0 &&
 		    where == SCROLLBAR_SLIDER) {
 			c->tty.mouse_scrolling_flag = 1;

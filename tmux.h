@@ -1633,6 +1633,13 @@ struct tty {
 	int		 mouse_drag_flag;
 	int		 mouse_scrolling_flag;
 	int		 mouse_slider_mpos;
+	int		 mouse_drag_where;
+	u_int		 mouse_drag_w;	/* window ID where drag started */
+	u_int		 mouse_drag_wp;	/* pane ID where drag started */
+	u_int		 mouse_drag_x;	/* original x coordinate */
+	u_int		 mouse_drag_y;	/* original y coordinate */
+	int		 mouse_drag_ox;	/* original ox offset */
+	int		 mouse_drag_oy;	/* original oy offset */
 
 	void		(*mouse_drag_update)(struct client *,
 			    struct mouse_event *);
