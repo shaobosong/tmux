@@ -4760,7 +4760,7 @@ window_copy_select_char(struct window_mode_entry *wme)
 	struct window_copy_mode_data	*data = wme->data;
 
 	data->lineflag = LINE_SEL_NONE;
-	data->rectflag = 0;
+	// data->rectflag = 0;
 	data->selflag = SEL_CHAR;
 
 	// data->dx = data->cx;
@@ -5026,7 +5026,8 @@ window_copy_get_selection(struct window_mode_entry *wme, size_t *len)
 	char				*buf;
 	size_t				 off;
 	u_int				 i, xx, yy, sx, sy, ex, ey, ey_last;
-	u_int				 firstsx, lastex, restex, restsx, selx;
+	u_int				 selx, endselx;
+	u_int				 firstsx, lastex, restex, restsx;
 	int				 keys;
 
 	if (data->screen.sel == NULL && data->lineflag == LINE_SEL_NONE) {
@@ -5083,19 +5084,22 @@ window_copy_get_selection(struct window_mode_entry *wme, size_t *len)
 		 * Need to ignore the column with the cursor in it, which for
 		 * rectangular copy means knowing which side the cursor is on.
 		 */
-		if (data->cursordrag == CURSORDRAG_ENDSEL)
+		if (data->cursordrag == CURSORDRAG_ENDSEL) {
 			selx = data->selx;
-		else
+			endselx = data->endselx;
+		} else {
 			selx = data->endselx;
-		if (selx < data->cx) {
+			endselx = data->selx;
+		}
+		if (selx < endselx) {
 			/* Selection start is on the left. */
 			if (keys == MODEKEY_EMACS) {
-				lastex = data->cx;
-				restex = data->cx;
+				lastex = endselx;
+				restex = endselx;
 			}
 			else {
-				lastex = data->cx + 1;
-				restex = data->cx + 1;
+				lastex = endselx + 1;
+				restex = endselx + 1;
 			}
 			firstsx = selx;
 			restsx = selx;
@@ -5103,8 +5107,8 @@ window_copy_get_selection(struct window_mode_entry *wme, size_t *len)
 			/* Cursor is on the left. */
 			lastex = selx + 1;
 			restex = selx + 1;
-			firstsx = data->cx;
-			restsx = data->cx;
+			firstsx = endselx;
+			restsx = endselx;
 		}
 	} else {
 		if (keys == MODEKEY_EMACS)
