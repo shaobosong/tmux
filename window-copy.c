@@ -4612,6 +4612,90 @@ window_copy_redraw_screen(struct window_mode_entry *wme)
 }
 
 static void
+window_copy_synchronize_cursor_word_end(struct window_mode_entry *wme)
+{
+	struct window_copy_mode_data	*data = wme->data;
+	u_int				 xx, yy, csx, csy, cex, cey;
+
+	xx = data->cx;
+	yy = screen_hsize(data->backing) + data->cy - data->oy;
+
+	if (window_copy_in_set(wme, xx, yy, WHITESPACE)) {
+		window_copy_cursor_previous_blank_pos(wme, &csx, &csy);
+		window_copy_cursor_next_blank_end_pos(wme, &cex, &cey);
+	} else {
+		window_copy_cursor_previous_word_pos(wme,
+		    data->separators, &csx, &csy);
+		window_copy_cursor_word_end_pos(wme,
+		    data->separators, &cex, &cey);
+	}
+
+	if ((data->dy > yy && data->dx >= xx) ||
+	    (data->dy == yy && data->dx >= xx)) {
+		/* Top-left selection */
+		if (!data->rectflag) {
+			data->selx = csx;
+			data->sely = csy;
+			data->endselx = data->endselrx;
+			data->endsely = data->endselry;
+		} else {
+			data->endselx = csx;
+			data->endsely = csy;
+			data->selx = data->endselrx;
+			data->sely = data->endselry;
+		}
+		log_debug("top-left selection");
+	} else if (data->dy > yy && data->dx < xx) {
+		/* Top-right selection */
+		if (!data->rectflag) {
+			data->selx = csx;
+			data->sely = csy;
+			data->endselx = data->endselrx;
+			data->endsely = data->endselry;
+		} else {
+			data->endselx = data->selrx;
+			data->endsely = cey;
+			data->selx = cex;
+			data->sely = data->endselry;
+		}
+		log_debug("top-right selection");
+	} else if ((data->dy < yy && data->dx <= xx) ||
+	    (data->dy == yy && data->dx < xx)) {
+		/* Bottom-right selection */
+		xx = window_copy_find_length(wme, yy);
+		if (!data->rectflag && data->cx >= xx) {
+			cex = xx;
+		}
+		data->selx = data->selrx;
+		data->sely = data->selry;
+		data->endselx = cex;
+		data->endsely = cey;
+		log_debug("bottom-right selection");
+	} else {
+		/* Bottom-left selection */
+		if (!data->rectflag) {
+			xx = window_copy_find_length(wme, yy);
+			if (data->cx >= xx) {
+				cex = xx;
+			}
+			data->selx = data->selrx;
+			data->sely = data->selry;
+			data->endselx = cex;
+			data->endsely = cey;
+		} else {
+			data->selx = csx;
+			data->sely = data->selry;
+			data->endselx = data->endselrx;
+			data->endsely = csy;
+		}
+		log_debug("bottom-left selection");
+	}
+
+	log_debug("word-left selection: from (%u,%u) to (%u,%u)",
+	    data->selx, data->sely, data->endselx, data->endsely);
+}
+
+static void
 window_copy_synchronize_cursor_end(struct window_mode_entry *wme, int begin,
     int no_reset)
 {
@@ -4628,45 +4712,8 @@ window_copy_synchronize_cursor_end(struct window_mode_entry *wme, int begin,
 	case SEL_WORD:
 		if (no_reset)
 			break;
-		begin = 0;
-		if (data->dy > yy || (data->dy == yy && data->dx > xx)) {
-			/* Right to left selection. */
-			if (window_copy_in_set(wme, xx, yy, WHITESPACE)) {
-				window_copy_cursor_previous_blank_pos(wme, &xx, &yy);
-				log_debug("[ssb]: %s: r2l: whitespace, xx: %u, yy: %u",
-						__func__, xx, yy);
-			} else {
-				window_copy_cursor_previous_word_pos(wme,
-						data->separators, &xx, &yy);
-				log_debug("[ssb]: %s: r2l: non-whitespace, xx: %u, yy: %u",
-						__func__, xx, yy);
-			}
-			begin = 1;
-
-			/* Reset the end. */
-			data->endselx = data->endselrx;
-			data->endsely = data->endselry;
-		} else {
-			/* Left to right selection. */
-			if (window_copy_in_set(wme, xx, yy, WHITESPACE)) {
-				xx = window_copy_find_length(wme, yy);
-				if (data->cx < xx) {
-					window_copy_cursor_next_blank_end_pos(wme, &xx, &yy);
-				}
-				log_debug("[ssb]: %s: l2r: whitespace, xx: %u, yy: %u",
-						__func__, xx, yy);
-			} else {
-				window_copy_cursor_word_end_pos(wme,
-						data->separators, &xx, &yy);
-				log_debug("[ssb]: %s: l2r: non-whitespace, xx: %u, yy: %u",
-						__func__, xx, yy);
-			}
-
-			/* Reset the start. */
-			data->selx = data->selrx;
-			data->sely = data->selry;
-		}
-		break;
+		window_copy_synchronize_cursor_word_end(wme);
+		return;
 	case SEL_LINE:
 		if (no_reset)
 			break;
@@ -4944,7 +4991,7 @@ window_copy_set_selection(struct window_mode_entry *wme, int may_redraw,
 	struct screen			*s = &data->screen;
 	struct options			*oo = wp->window->options;
 	struct grid_cell		 gc;
-	u_int				 sx, sy, cy, endsx, endsy, old_sely, old_endsely;
+	u_int				 sx, sy, endsx, endsy, old_sely, old_endsely;
 	int				 startrelpos, endrelpos;
 	struct format_tree		*ft;
 
@@ -4991,21 +5038,11 @@ window_copy_set_selection(struct window_mode_entry *wme, int may_redraw,
 		 * rectangle selection - find the highest line and the number
 		 * of lines, and redraw just past that in both directions
 		 */
-		cy = data->cy;
-		if (data->cursordrag == CURSORDRAG_ENDSEL) {
-			if (sy < cy)
-				window_copy_redraw_lines(wme, sy, cy - sy + 1);
-			else
-				window_copy_redraw_lines(wme, cy, sy - cy + 1);
-		} else {
-			if (endsy < cy) {
-				window_copy_redraw_lines(wme, endsy,
-				    cy - endsy + 1);
-			} else {
-				window_copy_redraw_lines(wme, cy,
-				    endsy - cy + 1);
-			}
-		}
+		if (sy < endsy)
+			window_copy_redraw_lines(wme, sy, endsy - sy + 1);
+		else
+			window_copy_redraw_lines(wme, endsy, sy - endsy + 1);
+		window_copy_redraw_selection_diff(wme, old_sely, old_endsely);
 	} else if (data->selflag == SEL_WORD && may_redraw) {
 		window_copy_redraw_selection_diff(wme, old_sely, old_endsely);
 	} else if (data->selflag == SEL_LINE && may_redraw) {
@@ -5528,6 +5565,7 @@ window_copy_cursor_up(struct window_mode_entry *wme, int scroll_only)
 		old_endsely = data->endsely;
 		window_copy_scroll_down(wme, 1);
 		window_copy_redraw_selection_diff(wme, old_sely, old_endsely);
+		window_copy_update_selection(wme, 1, 0);
 	} else {
 		window_copy_update_cursor(wme, data->cx, data->cy - 1);
 		if (window_copy_update_selection(wme, 1, 0)) {
@@ -5594,6 +5632,7 @@ window_copy_cursor_down(struct window_mode_entry *wme, int scroll_only)
 		old_endsely = data->endsely;
 		window_copy_scroll_up(wme, 1);
 		window_copy_redraw_selection_diff(wme, old_sely, old_endsely);
+		window_copy_update_selection(wme, 1, 0);
 	} else {
 		window_copy_update_cursor(wme, data->cx, data->cy + 1);
 		if (window_copy_update_selection(wme, 1, 0)) {
