@@ -276,6 +276,7 @@ struct window_copy_mode_data {
 	int		 rectflag;	/* in rectangle copy mode? */
 	int		 scroll_exit;	/* exit on scroll to end? */
 	int		 hide_position;	/* hide position marker */
+	int		 extselflag;	/* in extend selection */
 
 	enum {
 		SEL_CHAR,		/* select one char at a time */
@@ -2011,6 +2012,31 @@ window_copy_cmd_other_end(struct window_copy_cmd_state *cs)
 }
 
 static enum window_copy_cmd_action
+window_copy_cmd_extend_selection(struct window_copy_cmd_state *cs)
+{
+	struct window_mode_entry	*wme = cs->wme;
+	struct window_copy_mode_data	*data = wme->data;
+	u_int				 px, py;
+
+	data->extselflag = 1;
+
+	py = screen_hsize(data->backing) + data->cy - data->oy;
+	px = window_copy_find_length(wme, py);
+	if (data->cx > px) {
+		window_copy_update_cursor(wme, px, data->cy);
+	}
+
+	/* Only work if there's an active selection */
+	if (data->screen.sel == NULL)
+		return (WINDOW_COPY_CMD_NOTHING);
+
+	/* Extend selection to current cursor position */
+	window_copy_update_selection(wme, 1, 0);
+
+	return (WINDOW_COPY_CMD_REDRAW);
+}
+
+static enum window_copy_cmd_action
 window_copy_cmd_selection_mode(struct window_copy_cmd_state *cs)
 {
 	struct window_mode_entry	*wme = cs->wme;
@@ -3187,7 +3213,12 @@ static const struct {
 	  .args = { "", 0, 0, NULL },
 	  .clear = WINDOW_COPY_CMD_CLEAR_EMACS_ONLY,
 	  .f = window_copy_cmd_top_line
-	}
+	},
+	{ .command = "extend-selection",
+	  .args = { "", 0, 0, NULL },
+	  .clear = WINDOW_COPY_CMD_CLEAR_NEVER,
+	  .f = window_copy_cmd_extend_selection
+	},
 };
 
 static void
@@ -5365,6 +5396,7 @@ window_copy_clear_selection(struct window_mode_entry *wme)
 	data->cursordrag = CURSORDRAG_NONE;
 	data->lineflag = LINE_SEL_NONE;
 	data->selflag = SEL_CHAR;
+	data->extselflag = 0;
 
 	py = screen_hsize(data->backing) + data->cy - data->oy;
 	px = window_copy_find_length(wme, py);
@@ -6236,7 +6268,9 @@ window_copy_start_drag(struct client *c, struct mouse_event *m)
 		px = window_copy_find_length(wme, py);
 		x = x > px ? px : x;
 		window_copy_update_cursor(wme, x, y);
-		window_copy_start_selection(wme);
+		if (!data->extselflag) {
+			window_copy_start_selection(wme);
+		}
 		break;
 	}
 
@@ -6331,6 +6365,8 @@ window_copy_drag_release(struct client *c, struct mouse_event *m)
 
 	data = wme->data;
 	evtimer_del(&data->dragtimer);
+
+	data->extselflag = 0;
 }
 
 static void
