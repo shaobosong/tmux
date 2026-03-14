@@ -5882,7 +5882,7 @@ window_copy_cursor_next_word_end_pos(struct window_mode_entry *wme,
 		if (!grid_reader_in_set(&gr, WHITESPACE))
 			grid_reader_cursor_right(&gr, 0, 0);
 		grid_reader_cursor_next_word_end(&gr, separators);
-		grid_reader_cursor_left(&gr, 1);
+		grid_reader_cursor_previous_character(&gr, 1);
 	} else
 		grid_reader_cursor_next_word_end(&gr, separators);
 	grid_reader_get_cursor(&gr, &px, &py);
@@ -5913,7 +5913,7 @@ window_copy_cursor_next_word_end(struct window_mode_entry *wme,
 		if (!grid_reader_in_set(&gr, WHITESPACE))
 			grid_reader_cursor_right(&gr, 0, 0);
 		grid_reader_cursor_next_word_end(&gr, separators);
-		grid_reader_cursor_left(&gr, 1);
+		grid_reader_cursor_previous_character(&gr, 1);
 	} else
 		grid_reader_cursor_next_word_end(&gr, separators);
 	grid_reader_get_cursor(&gr, &px, &py);
@@ -5940,7 +5940,7 @@ window_copy_cursor_word_end_pos(struct window_mode_entry *wme,
 	grid_reader_start(&gr, back_s->grid, px, py);
 	if (options_get_number(oo, "mode-keys") == MODEKEY_VI) {
 		grid_reader_cursor_next_word_end(&gr, separators);
-		grid_reader_cursor_left(&gr, 1);
+		grid_reader_cursor_previous_character(&gr, 1);
 	} else
 		grid_reader_cursor_next_word_end(&gr, separators);
 	grid_reader_get_cursor(&gr, &px, &py);
@@ -5969,7 +5969,7 @@ window_copy_cursor_word_end(struct window_mode_entry *wme,
 	grid_reader_start(&gr, back_s->grid, px, py);
 	if (options_get_number(oo, "mode-keys") == MODEKEY_VI) {
 		grid_reader_cursor_next_word_end(&gr, separators);
-		grid_reader_cursor_left(&gr, 1);
+		grid_reader_cursor_previous_character(&gr, 1);
 	} else
 		grid_reader_cursor_next_word_end(&gr, separators);
 	grid_reader_get_cursor(&gr, &px, &py);

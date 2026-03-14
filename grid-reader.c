@@ -43,6 +43,47 @@ grid_reader_line_length(struct grid_reader *gr)
 	return (grid_line_length(gr->gd, gr->cy));
 }
 
+/* Move the cursor to the start of the current character. */
+static void
+grid_reader_cursor_back_to_character(struct grid_reader *gr)
+{
+	struct grid_cell	gc;
+
+	while (gr->cx > 0) {
+		grid_get_cell(gr->gd, gr->cx, gr->cy, &gc);
+		if (~gc.flags & GRID_FLAG_PADDING)
+			break;
+		gr->cx--;
+	}
+}
+
+/* Check if the cursor is on a wide-character padding cell. */
+static int
+grid_reader_cursor_is_padding(struct grid_reader *gr)
+{
+	struct grid_cell	gc;
+
+	grid_get_cell(gr->gd, gr->cx, gr->cy, &gc);
+	return (gc.flags & GRID_FLAG_PADDING);
+}
+
+/* Move the cursor forward to the next character boundary. */
+static void
+grid_reader_cursor_next_character(struct grid_reader *gr)
+{
+	struct grid_cell	gc;
+	u_int			px;
+
+	px = grid_reader_line_length(gr);
+	gr->cx++;
+	while (gr->cx < px) {
+		grid_get_cell(gr->gd, gr->cx, gr->cy, &gc);
+		if (~gc.flags & GRID_FLAG_PADDING)
+			break;
+		gr->cx++;
+	}
+}
+
 /* Move cursor forward one position. */
 void
 grid_reader_cursor_right(struct grid_reader *gr, int wrap, int all)
@@ -88,6 +129,23 @@ grid_reader_cursor_left(struct grid_reader *gr, int wrap)
 		grid_reader_cursor_end_of_line(gr, 0, 0);
 	} else if (gr->cx > 0)
 		gr->cx--;
+}
+
+/* Move cursor back to the previous character boundary. */
+void
+grid_reader_cursor_previous_character(struct grid_reader *gr, int wrap)
+{
+	if (gr->cx == 0) {
+		if (gr->cy == 0 ||
+		    !(wrap ||
+		    grid_get_line(gr->gd, gr->cy - 1)->flags & GRID_LINE_WRAPPED))
+			return;
+		grid_reader_cursor_up(gr);
+		grid_reader_cursor_end_of_line(gr, 0, 0);
+	}
+	if (gr->cx > 0)
+		gr->cx--;
+	grid_reader_cursor_back_to_character(gr);
 }
 
 /* Move cursor down one line. */
@@ -276,6 +334,7 @@ grid_reader_cursor_next_word(struct grid_reader *gr, const char *separators)
 	else
 		xx = grid_reader_line_length(gr);
 	yy = gr->gd->hsize + gr->gd->sy - 1;
+	grid_reader_cursor_back_to_character(gr);
 
 	/*
 	 * When navigating via spaces (for example with next-space) separators
@@ -292,13 +351,13 @@ grid_reader_cursor_next_word(struct grid_reader *gr, const char *separators)
 	if (!grid_reader_in_set(gr, WHITESPACE)) {
 		if (grid_reader_in_set(gr, separators)) {
 			do
-				gr->cx++;
+				grid_reader_cursor_next_character(gr);
 			while (grid_reader_handle_wrap(gr, &xx, &yy) &&
 			    grid_reader_in_set(gr, separators) &&
 			    !grid_reader_in_set(gr, WHITESPACE));
 		} else {
 			do
-				gr->cx++;
+				grid_reader_cursor_next_character(gr);
 			while (grid_reader_handle_wrap(gr, &xx, &yy) &&
 			    !(grid_reader_in_set(gr, separators) ||
 			    grid_reader_in_set(gr, WHITESPACE)));
@@ -321,6 +380,7 @@ grid_reader_cursor_next_word_end(struct grid_reader *gr, const char *separators)
 	else
 		xx = grid_reader_line_length(gr);
 	yy = gr->gd->hsize + gr->gd->sy - 1;
+	grid_reader_cursor_back_to_character(gr);
 
 	/*
 	 * When navigating via spaces (for example with next-space), separators
@@ -338,14 +398,14 @@ grid_reader_cursor_next_word_end(struct grid_reader *gr, const char *separators)
 			gr->cx++;
 		else if (grid_reader_in_set(gr, separators)) {
 			do
-				gr->cx++;
+				grid_reader_cursor_next_character(gr);
 			while (grid_reader_handle_wrap(gr, &xx, &yy) &&
 			    grid_reader_in_set(gr, separators) &&
 			    !grid_reader_in_set(gr, WHITESPACE));
 			return;
 		} else {
 			do
-				gr->cx++;
+				grid_reader_cursor_next_character(gr);
 			while (grid_reader_handle_wrap(gr, &xx, &yy) &&
 			    !(grid_reader_in_set(gr, WHITESPACE) ||
 			    grid_reader_in_set(gr, separators)));
@@ -511,13 +571,18 @@ void
 grid_reader_cursor_previous_word(struct grid_reader *gr, const char *separators,
     int already, int stop_at_eol)
 {
-	int	oldx, oldy, at_eol, word_is_letters;
+	int	oldx, oldy, at_eol, word_is_letters, on_padding;
+
+	on_padding = grid_reader_cursor_is_padding(gr);
+	grid_reader_cursor_back_to_character(gr);
+	if (on_padding)
+		already = 0;
 
 	/* Move back to the previous word character. */
 	if (already || grid_reader_in_set(gr, WHITESPACE)) {
 		for (;;) {
 			if (gr->cx > 0) {
-				gr->cx--;
+				grid_reader_cursor_previous_character(gr, 0);
 				if (!grid_reader_in_set(gr, WHITESPACE)) {
 					word_is_letters =
 					    !grid_reader_in_set(gr, separators);
@@ -532,7 +597,7 @@ grid_reader_cursor_previous_word(struct grid_reader *gr, const char *separators,
 				/* Stop if separator at EOL. */
 				if (stop_at_eol && gr->cx > 0) {
 					oldx = gr->cx;
-					gr->cx--;
+					grid_reader_cursor_previous_character(gr, 0);
 					at_eol = grid_reader_in_set(gr,
 					    WHITESPACE);
 					gr->cx = oldx;
@@ -559,7 +624,7 @@ grid_reader_cursor_previous_word(struct grid_reader *gr, const char *separators,
 			grid_reader_cursor_end_of_line(gr, 0, 1);
 		}
 		if (gr->cx > 0)
-			gr->cx--;
+			grid_reader_cursor_previous_character(gr, 0);
 	} while (!grid_reader_in_set(gr, WHITESPACE) &&
 	    word_is_letters != grid_reader_in_set(gr, separators));
 	gr->cx = oldx;

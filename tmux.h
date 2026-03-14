@@ -3091,6 +3091,7 @@ u_int	 grid_reader_line_length(struct grid_reader *);
 int	 grid_reader_in_set(struct grid_reader *, const char *);
 void	 grid_reader_cursor_right(struct grid_reader *, int, int);
 void	 grid_reader_cursor_left(struct grid_reader *, int);
+void	 grid_reader_cursor_previous_character(struct grid_reader *, int);
 void	 grid_reader_cursor_down(struct grid_reader *);
 void	 grid_reader_cursor_up(struct grid_reader *);
 void	 grid_reader_cursor_start_of_line(struct grid_reader *, int);
