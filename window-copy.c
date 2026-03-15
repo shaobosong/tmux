@@ -88,6 +88,8 @@ static int	window_copy_search_down(struct window_mode_entry *, int);
 static void	window_copy_goto_line(struct window_mode_entry *, const char *);
 static void	window_copy_update_cursor(struct window_mode_entry *, u_int,
 		    u_int);
+static u_int	window_copy_normalize_character_x(struct window_mode_entry *,
+		    u_int, u_int);
 static void	window_copy_select_char(struct window_mode_entry *);
 static void	window_copy_start_selection(struct window_mode_entry *);
 static int	window_copy_adjust_selection(struct window_mode_entry *,
@@ -4769,17 +4771,7 @@ window_copy_synchronize_cursor_end(struct window_mode_entry *wme, int begin,
 		}
 		break;
 	case SEL_CHAR:
-		// if (data->dy > yy || (data->dy == yy && data->dx > xx)) {
-		// 	/* Reset the end. */
-		// 	begin = 1;
-		// 	data->endselx = data->endselrx;
-		// 	data->endsely = data->endselry;
-		// } else {
-		// 	/* Reset the start. */
-		// 	begin = 0;
-		// 	data->selx = data->selrx;
-		// 	data->sely = data->selry;
-		// }
+		xx = window_copy_normalize_character_x(wme, xx, yy);
 		break;
 	}
 	if (begin) {
@@ -4832,6 +4824,27 @@ window_copy_update_cursor(struct window_mode_entry *wme, u_int cx, u_int cy)
 	}
 }
 
+static u_int
+window_copy_normalize_character_x(struct window_mode_entry *wme, u_int px,
+    u_int py)
+{
+	struct window_copy_mode_data	*data = wme->data;
+	struct grid			*gd = data->backing->grid;
+	struct grid_cell		 gc;
+	u_int				 limit;
+
+	limit = window_copy_find_length(wme, py);
+	if (px >= limit)
+		return (px);
+
+	grid_get_cell(gd, px, py, &gc);
+	while ((gc.flags & GRID_FLAG_PADDING) && px > 0) {
+		px--;
+		grid_get_cell(gd, px, py, &gc);
+	}
+	return (px);
+}
+
 static void
 window_copy_select_char(struct window_mode_entry *wme)
 {
@@ -4857,9 +4870,11 @@ static void
 window_copy_start_selection(struct window_mode_entry *wme)
 {
 	struct window_copy_mode_data	*data = wme->data;
+	u_int				 py;
 
-	data->selx = data->cx;
-	data->sely = screen_hsize(data->backing) + data->cy - data->oy;
+	py = screen_hsize(data->backing) + data->cy - data->oy;
+	data->selx = window_copy_normalize_character_x(wme, data->cx, py);
+	data->sely = py;
 
 	data->endselx = data->selx;
 	data->endsely = data->sely;
@@ -5549,6 +5564,7 @@ window_copy_cursor_left(struct window_mode_entry *wme)
 	grid_reader_start(&gr, back_s->grid, px, py);
 	grid_reader_cursor_left(&gr, 1);
 	grid_reader_get_cursor(&gr, &px, &py);
+	px = window_copy_normalize_character_x(wme, px, py);
 	window_copy_acquire_cursor_up(wme, hsize, data->oy, oldy, px, py);
 }
 
@@ -6205,7 +6221,9 @@ window_copy_move_mouse(struct mouse_event *m)
 {
 	struct window_pane		*wp;
 	struct window_mode_entry	*wme;
+	struct window_copy_mode_data	*data;
 	u_int				 x, y;
+	u_int				 py, px;
 
 	wp = cmd_mouse_pane(m, NULL, NULL);
 	if (wp == NULL)
@@ -6218,6 +6236,13 @@ window_copy_move_mouse(struct mouse_event *m)
 
 	if (cmd_mouse_at(wp, m, &x, &y, 0) != 0)
 		return;
+
+	data = wme->data;
+	py = screen_hsize(data->backing) + y - data->oy;
+	px = window_copy_find_length(wme, py);
+	if (x > px)
+		x = px;
+	x = window_copy_normalize_character_x(wme, x, py);
 
 	window_copy_update_cursor(wme, x, y);
 }
@@ -6267,6 +6292,7 @@ window_copy_start_drag(struct client *c, struct mouse_event *m)
 		py = screen_hsize(data->backing) + y - data->oy;
 		px = window_copy_find_length(wme, py);
 		x = x > px ? px : x;
+		x = window_copy_normalize_character_x(wme, x, py);
 		window_copy_update_cursor(wme, x, y);
 		if (!data->extselflag) {
 			window_copy_start_selection(wme);
@@ -6325,6 +6351,7 @@ window_copy_drag_update(struct client *c, struct mouse_event *m)
 	if (!data->rectflag) {
 		x = x > px ? px : x;
 	}
+	x = window_copy_normalize_character_x(wme, x, py);
 	log_debug("[ssb]: %s: x: %u, y: %u", __func__, x, y);
 	window_copy_update_cursor(wme, x, y);
 	if (window_copy_update_selection(wme, 1, 0)) {

@@ -112,8 +112,7 @@ $TMUX send-keys -X copy-selection
 [ "$($TMUX show-buffer)" = "500xyz" ] || exit 1
 
 # Test that wide characters in `word-separators` are treated as a single
-# separator for `next-word`, `next-word-end`, and `previous-word`,
-# including when `previous-word` starts on a padding cell.
+# separator for `next-word`, `next-word-end`, and `previous-word`.
 wide=$(printf '\344\275\240')
 text="a${wide}b"
 
@@ -147,9 +146,46 @@ $TMUX send-keys -X start-of-line
 $TMUX send-keys -X next-word
 $TMUX send-keys -X next-word
 $TMUX send-keys -X cursor-left
-[ "$($TMUX display-message -p '#{copy_cursor_x}')" = "2" ] || exit 1
-$TMUX send-keys -X previous-word
 [ "$($TMUX display-message -p '#{copy_cursor_x}')" = "1" ] || exit 1
+$TMUX send-keys -X previous-word
+[ "$($TMUX display-message -p '#{copy_cursor_x}')" = "0" ] || exit 1
+
+$TMUX send-keys -X start-of-line
+$TMUX send-keys -X next-word
+$TMUX send-keys -X next-word
+$TMUX send-keys -X cursor-left
+[ "$($TMUX display-message -p '#{copy_cursor_x}')" = "1" ] || exit 1
+$TMUX send-keys -X begin-selection
+$TMUX send-keys -X copy-selection
+[ "$($TMUX show-buffer)" = "$wide" ] || exit 1
+
+$TMUX send-keys -X start-of-line
+$TMUX send-keys -X next-word
+$TMUX send-keys -X next-word
+$TMUX send-keys -X cursor-left
+[ "$($TMUX display-message -p '#{copy_cursor_x}')" = "1" ] || exit 1
+$TMUX send-keys -X begin-selection
+$TMUX send-keys -X cursor-right
+$TMUX send-keys -X copy-selection
+[ "$($TMUX show-buffer)" = "${wide}b" ] || exit 1
+
+$TMUX kill-server 2>/dev/null
+text="${wide}${wide}"
+
+$TMUX new -d -x20 -y5 "printf '%s\n' '$text'; cat" || exit 1
+$TMUX set -g window-size manual || exit 1
+$TMUX set-window-option -g mode-keys vi
+$TMUX copy-mode
+$TMUX send-keys -X history-top
+$TMUX send-keys -X start-of-line
+$TMUX send-keys -X cursor-right
+[ "$($TMUX display-message -p '#{copy_cursor_x}')" = "2" ] || exit 1
+$TMUX send-keys -X cursor-right
+[ "$($TMUX display-message -p '#{copy_cursor_x}')" = "4" ] || exit 1
+$TMUX send-keys -X cursor-left
+[ "$($TMUX display-message -p '#{copy_cursor_x}')" = "2" ] || exit 1
+$TMUX send-keys -X cursor-left
+[ "$($TMUX display-message -p '#{copy_cursor_x}')" = "0" ] || exit 1
 
 $TMUX kill-server 2>/dev/null
 text=" ${wide}a"
@@ -164,9 +200,9 @@ $TMUX send-keys -X start-of-line
 $TMUX send-keys -X next-word
 $TMUX send-keys -X cursor-right
 $TMUX send-keys -X cursor-left
-[ "$($TMUX display-message -p '#{copy_cursor_x}')" = "2" ] || exit 1
-$TMUX send-keys -X previous-word
 [ "$($TMUX display-message -p '#{copy_cursor_x}')" = "1" ] || exit 1
+$TMUX send-keys -X previous-word
+[ "$($TMUX display-message -p '#{copy_cursor_x}')" = "0" ] || exit 1
 
 $TMUX kill-server 2>/dev/null
 exit 0
